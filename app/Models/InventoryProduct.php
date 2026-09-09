@@ -1,0 +1,2 @@
+<?php namespace App\Models; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\HasMany;
+class InventoryProduct extends Model { protected $fillable=['sku','name','unit','purchase_price','sale_price','stock_quantity','stock_min','currency','description','is_active']; protected $casts=['purchase_price'=>'decimal:2','sale_price'=>'decimal:2','is_active'=>'boolean']; public function movements():HasMany{return $this->hasMany(StockMovement::class);} public function lines():HasMany{return $this->hasMany(CommercialDocumentLine::class);} }

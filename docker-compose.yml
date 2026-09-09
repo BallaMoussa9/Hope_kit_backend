@@ -1,0 +1,128 @@
+name: hope-kit
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hope-kit-app:latest
+    container_name: hope_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./:/var/www/html
+      - hope_vendor:/var/www/html/vendor
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [hope]
+
+  webserver:
+    image: nginx:1.27-alpine
+    container_name: hope_webserver
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./:/var/www/html:ro
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    networks: [hope]
+
+  db:
+    image: mysql:8.4
+    container_name: hope_db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-hope_kitnene}
+      MYSQL_USER: ${DB_USERNAME:-hope}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-hope}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+    ports:
+      - "3307:3306"
+    volumes:
+      - hope_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [hope]
+
+  redis:
+    image: redis:7-alpine
+    container_name: hope_redis
+    restart: unless-stopped
+    volumes:
+      - hope_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [hope]
+
+  queue_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hope-kit-app:latest
+    container_name: hope_queue_worker
+    restart: unless-stopped
+    env_file: [.env]
+    volumes:
+      - ./:/var/www/html
+      - hope_vendor:/var/www/html/vendor
+    command: php artisan queue:work --sleep=3 --tries=3 --timeout=120
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [hope]
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hope-kit-app:latest
+    container_name: hope_scheduler
+    restart: unless-stopped
+    env_file: [.env]
+    volumes:
+      - ./:/var/www/html
+      - hope_vendor:/var/www/html/vendor
+    command: sh -c 'while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [hope]
+
+  phpmyadmin:
+    image: phpmyadmin:5-apache
+    container_name: hope_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+    ports:
+      - "8080:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [hope]
+
+volumes:
+  hope_mysql:
+  hope_redis:
+  hope_vendor:
+
+networks:
+  hope:
+    driver: bridge
