@@ -1,0 +1,1 @@
+<?php namespace App\Models; use Illuminate\Database\Eloquent\Model; class DocumentEmailLog extends Model {protected $fillable=['commercial_document_id','sales_order_id','recipient','subject','status','error','sent_by'];}
