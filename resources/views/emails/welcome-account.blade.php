@@ -1,0 +1,1 @@
+<!doctype html><html lang="fr"><body style="font-family:Arial,sans-serif;color:#0B132B"><h2>Bienvenue sur HOPE</h2><p>Bonjour {{ $user->name }},</p><p>Votre compte a été créé. L'accès aux modules dépend du rôle attribué par l'administrateur.</p><p>Identifiant : <strong>{{ $user->email }}</strong></p></body></html>
