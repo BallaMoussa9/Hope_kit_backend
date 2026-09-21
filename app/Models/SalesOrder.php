@@ -1,0 +1,5 @@
+<?php
+namespace App\Models;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\{BelongsTo,HasMany};
+class SalesOrder extends Model { protected $fillable=['order_number','customer_id','status','order_date','expected_date','discount','subtotal','total_amount','currency','notes','warehouse_id','created_by']; protected $casts=['order_date'=>'date','expected_date'=>'date','discount'=>'decimal:2','subtotal'=>'decimal:2','total_amount'=>'decimal:2']; public function customer():BelongsTo{return $this->belongsTo(Customer::class);} public function warehouse():BelongsTo{return $this->belongsTo(Warehouse::class);} public function creator():BelongsTo{return $this->belongsTo(User::class,'created_by');} public function lines():HasMany{return $this->hasMany(SalesOrderLine::class);} public function documents():HasMany{return $this->hasMany(CommercialDocument::class,'sales_order_id');} public function deliveries():HasMany{return $this->hasMany(DeliveryNote::class,'sales_order_id');} }
