@@ -68,13 +68,39 @@ class DeliveryNoteController extends Controller
         return response($pdf->make('BON DE LIVRAISON', $lines),200,['Content-Type'=>'application/pdf','Content-Disposition'=>'inline; filename="'.$delivery->delivery_number.'.pdf"','Cache-Control'=>'no-store']);
     }
 
-    public function email(Request $request, DeliveryNote $delivery, SimplePdfService $pdf){
-        $to=$request->validate(['email'=>'nullable|email'])['email']??$delivery->order?->customer?->email;
-        abort_unless($to,422,'Le client n’a pas d’adresse email.');
-        if(config('mail.default')==='log')abort(422,'SMTP non configuré. Configurez les paramètres MAIL_* dans .env.');
-        $delivery->load(['order.customer','lines.product']);
-        $lines=['Bon de livraison : '.$delivery->delivery_number,'Commande : '.($delivery->order->order_number??'—'),'Client : '.($delivery->order->customer->name??'—'),'Date : '.$delivery->delivery_date,''];foreach($delivery->lines as $l)$lines[]=($l->product->name??'Produit').' | Quantité : '.$l->quantity;
-        $bytes=$pdf->make('BON DE LIVRAISON',$lines);
-        try{Mail::send('emails.document-available',['title'=>'Votre bon de livraison HOPE '.$delivery->delivery_number,'document'=>$delivery],function($m)use($to,$bytes,$delivery){$m->to($to)->subject('HOPE - Bon de livraison '.$delivery->delivery_number)->attachData($bytes,$delivery->delivery_number.'.pdf',['mime'=>'application/pdf']);});\App\Models\DocumentEmailLog::create(['sales_order_id'=>$delivery->sales_order_id,'recipient'=>$to,'subject'=>'HOPE - Bon de livraison '.$delivery->delivery_number,'status'=>'sent','sent_by'=>$request->user()->id]);return response()->json(['message'=>'Bon de livraison envoyé avec succès à '.$to.'.']);}catch(\Throwable $e){report($e);\App\Models\DocumentEmailLog::create(['sales_order_id'=>$delivery->sales_order_id,'recipient'=>$to,'subject'=>'HOPE - Bon de livraison '.$delivery->delivery_number,'status'=>'failed','error'=>app()->isLocal()?$e->getMessage():'Erreur SMTP','sent_by'=>$request->user()->id]);return response()->json(['message'=>'Échec de l’envoi email. Vérifiez la configuration SMTP.','error'=>app()->isLocal()?$e->getMessage():null],500);}
+    public function email(Request $request, DeliveryNote $delivery)
+    {
+        $to = $request->validate(['email' => 'nullable|email'])['email'] ?? $delivery->order?->customer?->email;
+        abort_unless($to, 422, 'Le client n’a pas d’adresse email.');
+
+        if (config('mail.default') === 'log') {
+            abort(422, 'SMTP non configuré. Configurez les paramètres MAIL_* dans .env.');
+        }
+
+        $delivery->load(['order.customer', 'lines.product']);
+
+        try {
+            Mail::to($to)->queue(new \App\Mail\DeliveryNoteEmailMail($delivery));
+
+            \App\Models\DocumentEmailLog::create([
+                'sales_order_id' => $delivery->sales_order_id,
+                'recipient' => $to,
+                'subject' => 'HOPE - Bon de livraison ' . $delivery->delivery_number,
+                'status' => 'queued',
+                'sent_by' => $request->user()->id,
+            ]);
+
+            return response()->json([
+                'message' => 'Le bon de livraison a été placé dans la file d’envoi.',
+                'recipient' => $to,
+                'status' => 'queued',
+            ], 202);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json([
+                'message' => 'Impossible de placer le bon de livraison dans la file d’envoi.',
+                'error' => app()->isLocal() ? $e->getMessage() : null,
+            ], 500);
+        }
     }
 }

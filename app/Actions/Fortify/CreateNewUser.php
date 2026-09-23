@@ -50,7 +50,7 @@ class CreateNewUser implements CreatesNewUsers
             'preferred_language' => 'fr',
         ]);
 
-        if ($user->email) { Mail::to($user->email)->send(new WelcomeAccountMail($user)); }
+        if ($user->email) { Mail::to($user->email)->queue(new WelcomeAccountMail($user)); }
         return $user;
     }
 }

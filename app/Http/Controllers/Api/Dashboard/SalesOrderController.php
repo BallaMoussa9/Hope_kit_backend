@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use App\Mail\OrderEmailMail;
 
 class SalesOrderController extends Controller
 {
@@ -163,13 +164,52 @@ class SalesOrderController extends Controller
         return response($pdf->salesOrder($order), 200, ['Content-Type'=>'application/pdf','Content-Disposition'=>'inline; filename="'.$order->order_number.'.pdf"','Cache-Control'=>'no-store']);
     }
 
-    public function email(Request $request, SalesOrder $order, SimplePdfService $pdf)
-    {
-        $to = $request->validate(['email'=>'required|email'])['email'];
-        if (config('mail.default') === 'log') abort(422, 'SMTP non configuré. Configurez les paramètres MAIL_* dans .env.');
-        $order->load(['customer','lines.product','warehouse']); $bytes=$pdf->salesOrder($order);
-        try { Mail::send('emails.document-available',['title'=>'Commande HOPE '.$order->order_number,'document'=>$order,'recipient'=>$to],function($m)use($to,$bytes,$order){$m->to($to)->subject('HOPE - Commande '.$order->order_number)->attachData($bytes,$order->order_number.'.pdf',['mime'=>'application/pdf']);}); return response()->json(['message'=>'Commande envoyée à '.$to.'.']); }
-        catch (\Throwable $e) { report($e); return response()->json(['message'=>'Échec de l’envoi email. Vérifiez la configuration SMTP.','error'=>app()->isLocal()?$e->getMessage():null],500); }
+   public function email(
+    Request $request,
+    SalesOrder $order
+) {
+    $to = $request->validate([
+        'email' => 'required|email',
+    ])['email'];
+
+    if (config('mail.default') === 'log') {
+        abort(
+            422,
+            'SMTP non configuré. Configurez les paramètres MAIL_* dans .env.'
+        );
     }
+
+    $order->load([
+        'customer',
+        'lines.product',
+        'warehouse',
+    ]);
+
+    try {
+        Mail::to($to)->queue(
+            new OrderEmailMail(
+                $order,
+                $to
+            )
+        );
+
+        return response()->json([
+            'message' => 'La commande a été placée dans la file d’envoi.',
+            'recipient' => $to,
+            'status' => 'queued',
+        ], 202);
+
+    } catch (\Throwable $e) {
+
+        report($e);
+
+        return response()->json([
+            'message' => 'Impossible de placer la commande dans la file d’envoi.',
+            'error' => app()->isLocal()
+                ? $e->getMessage()
+                : null,
+        ], 500);
+    }
+}
 
 }

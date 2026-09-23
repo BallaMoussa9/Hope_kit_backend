@@ -329,16 +329,49 @@ class CommercialDocumentController extends Controller
         return response($pdf->commercialDocument($document),200,['Content-Type'=>'application/pdf','Content-Disposition'=>'inline; filename="'.$document->document_number.'.pdf"','Cache-Control'=>'no-store']);
     }
 
-    public function email(CommercialDocument $document, Request $request, \App\Services\SimplePdfService $pdf)
+    public function email(CommercialDocument $document, Request $request)
     {
-        $to=$request->validate(['email'=>'required|email'])['email'];
-        if(config('mail.default')==='log')abort(422,'SMTP non configuré. Configurez les paramètres MAIL_* dans .env.');
-        $bytes=$pdf->commercialDocument($document);
-        try{
-            \Illuminate\Support\Facades\Mail::send('emails.document-available',['title'=>'HOPE '.$document->document_number,'document'=>$document,'recipient'=>$to],function($m)use($to,$bytes,$document){$m->to($to)->subject('HOPE - '.$document->document_number)->attachData($bytes,$document->document_number.'.pdf',['mime'=>'application/pdf']);});
-            \App\Models\DocumentEmailLog::create(['commercial_document_id'=>$document->id,'recipient'=>$to,'subject'=>'HOPE - '.$document->document_number,'status'=>'sent','sent_by'=>$request->user()->id]);
-            return response()->json(['message'=>'Document envoyé à '.$to.'.']);
-        }catch(\Throwable $e){report($e);\App\Models\DocumentEmailLog::create(['commercial_document_id'=>$document->id,'recipient'=>$to,'subject'=>'HOPE - '.$document->document_number,'status'=>'failed','error'=>app()->isLocal()?$e->getMessage():'Erreur SMTP','sent_by'=>$request->user()->id]);return response()->json(['message'=>'Échec de l’envoi email. Vérifiez la configuration SMTP.','error'=>app()->isLocal()?$e->getMessage():null],500);}
+        $to = $request->validate(['email' => 'required|email'])['email'];
+
+        if (config('mail.default') === 'log') {
+            abort(422, 'SMTP non configuré. Configurez les paramètres MAIL_* dans .env.');
+        }
+
+        $document->load(['customer', 'lines.product']);
+
+        try {
+            \Illuminate\Support\Facades\Mail::to($to)->queue(
+                new \App\Mail\CommercialDocumentEmailMail($document, $to)
+            );
+
+            \App\Models\DocumentEmailLog::create([
+                'commercial_document_id' => $document->id,
+                'recipient' => $to,
+                'subject' => 'HOPE - ' . $document->document_number,
+                'status' => 'queued',
+                'sent_by' => $request->user()->id,
+            ]);
+
+            return response()->json([
+                'message' => 'Le document a été placé dans la file d’envoi.',
+                'recipient' => $to,
+                'status' => 'queued',
+            ], 202);
+        } catch (\Throwable $e) {
+            report($e);
+            \App\Models\DocumentEmailLog::create([
+                'commercial_document_id' => $document->id,
+                'recipient' => $to,
+                'subject' => 'HOPE - ' . $document->document_number,
+                'status' => 'failed',
+                'error' => app()->isLocal() ? $e->getMessage() : 'Erreur lors de la mise en file',
+                'sent_by' => $request->user()->id,
+            ]);
+            return response()->json([
+                'message' => 'Impossible de placer le document dans la file d’envoi.',
+                'error' => app()->isLocal() ? $e->getMessage() : null,
+            ], 500);
+        }
     }
 
 }

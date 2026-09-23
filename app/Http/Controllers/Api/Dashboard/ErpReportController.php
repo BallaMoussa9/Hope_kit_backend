@@ -36,10 +36,42 @@ class ErpReportController extends Controller
 
     public function email(Request $r, SimplePdfService $pdf)
     {
-        $v=$r->validate(['email'=>'required|email','type'=>'nullable|in:sales,stock,movements,purchases,payments','date_from'=>'nullable|date','date_to'=>'nullable|date']);
-        if(config('mail.default')==='log')abort(422,'SMTP non configuré. Configurez les paramètres MAIL_* dans .env.');
-        $type=$v['type']??'sales'; [$from,$to]=$this->period($r); $data=$this->index($r)->getData(true); $bytes=$pdf->report($type,$data,$from,$to);
-        try{Mail::send('emails.document-available',['title'=>'Rapport HOPE - '.$this->label($type),'document'=>null,'recipient'=>$v['email']],function($m)use($v,$bytes,$type){$m->to($v['email'])->subject('HOPE - Rapport '.$type)->attachData($bytes,'rapport-'.$type.'.pdf',['mime'=>'application/pdf']);});return response()->json(['message'=>'Rapport envoyé à '.$v['email'].'.']);}catch(\Throwable $e){report($e);return response()->json(['message'=>'Échec de l’envoi email. Vérifiez la configuration SMTP.','error'=>app()->isLocal()?$e->getMessage():null],500);}
+        $v = $r->validate([
+            'email' => 'required|email',
+            'type' => 'nullable|in:sales,stock,movements,purchases,payments',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date',
+        ]);
+
+        if (config('mail.default') === 'log') {
+            abort(422, 'SMTP non configuré. Configurez les paramètres MAIL_* dans .env.');
+        }
+
+        $type = $v['type'] ?? 'sales';
+        [$from, $to] = $this->period($r);
+        $data = $this->index($r)->getData(true);
+
+        try {
+            Mail::to($v['email'])->queue(new \App\Mail\ReportEmailMail(
+                $type,
+                $data,
+                $from->toIso8601String(),
+                $to->toIso8601String(),
+                $v['email'],
+            ));
+
+            return response()->json([
+                'message' => 'Le rapport a été placé dans la file d’envoi.',
+                'recipient' => $v['email'],
+                'status' => 'queued',
+            ], 202);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json([
+                'message' => 'Impossible de placer le rapport dans la file d’envoi.',
+                'error' => app()->isLocal() ? $e->getMessage() : null,
+            ], 500);
+        }
     }
 
     private function period(Request $r): array

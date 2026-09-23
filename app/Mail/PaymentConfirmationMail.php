@@ -13,27 +13,18 @@ class PaymentConfirmationMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
-    /**
-     * Le paiement concerné.
-     */
     public function __construct(
         public Payment $payment
-    ) {
-    }
+    ) {}
 
-    /**
-     * Construire l'e-mail.
-     */
     public function build()
     {
-        // Charger les relations nécessaires
         $this->payment->loadMissing([
             'document',
             'customer',
             'recorder',
         ]);
 
-        // Générer le reçu PDF
         $pdf = app(SimplePdfService::class)
             ->paymentReceipt($this->payment);
 
@@ -42,11 +33,7 @@ class PaymentConfirmationMail extends Mailable implements ShouldQueue
                 'HOPE - Confirmation de paiement PAI-' .
                 $this->payment->id
             )
-
-            // Vue Blade de l'e-mail
             ->view('emails.payment-confirmation')
-
-            // Ajouter le reçu PDF
             ->attachData(
                 $pdf,
                 'PAI-' . $this->payment->id . '.pdf',
