@@ -1,0 +1,3 @@
+<?php
+namespace App\Notifications; use App\Models\Payment; use Illuminate\Bus\Queueable; use Illuminate\Contracts\Queue\ShouldQueue; use Illuminate\Notifications\Notification;
+class PaymentRecordedNotification extends Notification implements ShouldQueue {use Queueable; public function __construct(public Payment $payment){} public function via($notifiable){return ['database'];} public function toDatabase($notifiable){return ['title'=>'Paiement enregistré','message'=>'Un paiement de '.number_format((float)$this->payment->amount,0,',',' ').' FCFA a été enregistré pour '.$this->payment->document->document_number.'.','payment_id'=>$this->payment->id,'document_id'=>$this->payment->commercial_document_id];}}
